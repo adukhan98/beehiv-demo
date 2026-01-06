@@ -1,0 +1,226 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  CREATOR
+  ADMIN
+}
+
+enum ApprovalMode {
+  MANUAL
+  AUTO
+}
+
+enum TonePreference {
+  PROFESSIONAL
+  CASUAL
+  FRIENDLY
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum RecommendationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EventType {
+  IMPRESSION
+  CLICK
+}
+
+enum Category {
+  TECHNOLOGY
+  FINANCE
+  HEALTH
+  LIFESTYLE
+  BUSINESS
+  EDUCATION
+  ENTERTAINMENT
+  MARKETING
+  SAAS
+  AI_ML
+  OTHER
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  role      UserRole @default(CREATOR)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  creator Creator?
+
+  @@map("users")
+}
+
+model Creator {
+  id                 String   @id @default(uuid())
+  userId             String   @unique @map("user_id")
+  newsletterName     String   @map("newsletter_name")
+  newsletterUrl      String?  @map("newsletter_url")
+  description        String?
+  subscriberCount    Int?     @map("subscriber_count")
+  averageOpenRate    Float?   @map("average_open_rate")
+  primaryCategory    Category @default(OTHER) @map("primary_category")
+  onboardingComplete Boolean  @default(false) @map("onboarding_complete")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  boundaries CreatorBoundaries?
+  issues     Issue[]
+
+  @@map("creators")
+}
+
+model CreatorBoundaries {
+  id                String         @id @default(uuid())
+  creatorId         String         @unique @map("creator_id")
+  allowedCategories Category[]     @default([]) @map("allowed_categories")
+  blockedCategories Category[]     @default([]) @map("blocked_categories")
+  blockedBrands     String[]       @default([]) @map("blocked_brands")
+  maxAdsPerIssue    Int            @default(3) @map("max_ads_per_issue")
+  approvalMode      ApprovalMode   @default(MANUAL) @map("approval_mode")
+  preferredTone     TonePreference @default(PROFESSIONAL) @map("preferred_tone")
+  minCpm            Float?         @map("min_cpm")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@map("creator_boundaries")
+}
+
+model Issue {
+  id                 String   @id @default(uuid())
+  creatorId          String   @map("creator_id")
+  title              String
+  content            String   @db.Text
+  extractedKeywords  String[] @default([]) @map("extracted_keywords")
+  classifiedCategory Category @default(OTHER) @map("classified_category")
+  summary            String?  @db.Text
+  publishDate        DateTime? @map("publish_date")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  creator         Creator          @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  recommendations Recommendation[]
+
+  @@map("issues")
+}
+
+model Advertiser {
+  id           String   @id @default(uuid())
+  name         String
+  website      String?
+  logoUrl      String?  @map("logo_url")
+  contactEmail String   @map("contact_email")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  campaigns Campaign[]
+
+  @@map("advertisers")
+}
+
+model Campaign {
+  id               String         @id @default(uuid())
+  advertiserId     String         @map("advertiser_id")
+  name             String
+  description      String?
+  targetCategories Category[]     @default([]) @map("target_categories")
+  targetKeywords   String[]       @default([]) @map("target_keywords")
+  budget           Float          @default(0)
+  cpm              Float          @default(0)
+  startDate        DateTime       @map("start_date")
+  endDate          DateTime       @map("end_date")
+  status           CampaignStatus @default(DRAFT)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  advertiser Advertiser   @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  creatives  AdCreative[]
+
+  @@map("campaigns")
+}
+
+model AdCreative {
+  id             String         @id @default(uuid())
+  campaignId     String         @map("campaign_id")
+  headline       String
+  body           String         @db.Text
+  imageUrl       String?        @map("image_url")
+  ctaText        String         @default("Learn More") @map("cta_text")
+  destinationUrl String         @map("destination_url")
+  tone           TonePreference @default(PROFESSIONAL)
+  isActive       Boolean        @default(true) @map("is_active")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  campaign        Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recommendations Recommendation[]
+
+  @@map("ad_creatives")
+}
+
+model Recommendation {
+  id              String               @id @default(uuid())
+  issueId         String               @map("issue_id")
+  creativeId      String               @map("creative_id")
+  matchScore      Float                @map("match_score")
+  matchReasons    String[]             @default([]) @map("match_reasons")
+  rank            Int                  @default(0)
+  status          RecommendationStatus @default(PENDING)
+  rejectionReason String?              @map("rejection_reason")
+  exportedAt      DateTime?            @map("exported_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  issue    Issue      @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  creative AdCreative @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+  events   Event[]
+
+  @@unique([issueId, creativeId])
+  @@map("recommendations")
+}
+
+model Event {
+  id               String    @id @default(uuid())
+  recommendationId String    @map("recommendation_id")
+  type             EventType
+  ipAddress        String?   @map("ip_address")
+  userAgent        String?   @map("user_agent")
+  referrer         String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  recommendation Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  @@index([recommendationId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("events")
+}
